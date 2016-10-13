@@ -5,7 +5,7 @@ import com.twitter.finagle.naming.NameInterpreter
 import com.twitter.finagle.{Dtab, Namer, Path, Service}
 import com.twitter.util.Future
 import io.buoyant.admin.HtmlView
-import io.buoyant.namer.Delegator
+import io.buoyant.namer.{Delegator, RichActivity}
 
 class DelegateHandler(
   view: HtmlView,
@@ -27,7 +27,7 @@ class DelegateHandler(
   private[this] def getInterpreterDtab(ns: String): Future[(String, Dtab)] =
     interpreter(ns) match {
       case delegator: Delegator =>
-        delegator.dtab.values.toFuture.flatMap(Future.const).map(ns -> _)
+        delegator.dtab.toFuture.map(ns -> _)
       case _ => Future.value(ns -> Dtab.empty)
     }
 

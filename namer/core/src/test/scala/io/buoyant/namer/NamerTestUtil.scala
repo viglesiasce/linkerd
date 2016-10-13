@@ -10,7 +10,7 @@ trait NamerTestUtil { self: FunSuite =>
     def lookup(p: Path) = {
       assert(p.startsWith(prefix))
       val pathWithoutPrefix = p.drop(prefix.size)
-      Await.result(namer.lookup(pathWithoutPrefix).values.toFuture.flatMap(Future.const))
+      Await.result(namer.lookup(pathWithoutPrefix).toFuture)
     }
 
     val nameTree = lookup(path)
