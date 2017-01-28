@@ -18,9 +18,11 @@ object TestServiceImpl extends TestService {
 
       case _ =>
         // req.responsetype match {}
-        val payload = mkPayload(req.responsestatus.getOrElse(0))
-        Future.value(SimpleResponse(Some(payload), None, None))
+        val payload = mkPayload(req.responsesize.getOrElse(0))
+        Future.value(SimpleResponse(payload = Some(payload)))
     }
+
+  def cacheableUnaryCall(req: SimpleRequest) = unaryCall(req)
 
   /**
    * Echo back each request with a Payload having the requested size
@@ -86,13 +88,12 @@ object TestServiceImpl extends TestService {
       release().before(accumSize(reqs, processed + sz))
   }
 
-
   /**
    * For each ResponseParameter sent, we return a frame in the stream with the requested size.
    */
   def streamingOutputCall(req: StreamingOutputCallRequest): Stream[StreamingOutputCallResponse] = {
     val rsps = Stream[StreamingOutputCallResponse]()
-    respond(rsps, req.responseparameters).before(rsps.close())
+    streamResponses(rsps, req.responseparameters).before(rsps.close())
     rsps
   }
 
@@ -109,6 +110,6 @@ object TestServiceImpl extends TestService {
 
   private[this] def mkPayload(sz: Int): Payload = {
     val body = Buf.ByteArray.Owned(Array.fill(sz) { 0.toByte })
-    Payload(None, Some(body))
+    Payload(body = Some(body))
   }
 }

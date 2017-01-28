@@ -101,8 +101,7 @@ object Grpc extends Base {
     .withTests()
     .settings(publishArtifact := false)
 
-  /** Interop test server */
-  val interop = projectDir("grpc/interop")
+  val interopServer = projectDir("grpc/interop/server")
     .withGrpc
     .withTests()
     .withTwitterLib(Deps.twitterServer)
