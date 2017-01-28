@@ -12,13 +12,11 @@ object TestServiceImpl extends TestService {
   def emptyCall(empty: Empty): Future[Empty] = Future.value(Empty())
 
   def unaryCall(req: SimpleRequest): Future[SimpleResponse] =
-    req.responsestatus match {
-      case Some(EchoStatus(Some(code), msg)) =>
-        Future.exception(GrpcStatus(code, msg.getOrElse("")))
-
-      case _ =>
-        // req.responsetype match {}
-        val payload = mkPayload(req.responsesize.getOrElse(0))
+    getStatus(req.responseStatus) match {
+      case Some(status) => Future.exception(status)
+      case None =>
+        // req.responseType match { .. }
+        val payload = mkPayload(req.responseSize.getOrElse(0))
         Future.value(SimpleResponse(payload = Some(payload)))
     }
 
@@ -38,14 +36,13 @@ object TestServiceImpl extends TestService {
       case Throw(e) => Future.exception(GrpcStatus.Internal(e.getMessage))
 
       case Return(Stream.Releasable(req, release)) =>
-        req.responsestatus match {
-          case Some(EchoStatus(Some(code), msg)) =>
-            val s = GrpcStatus(code, msg.getOrElse(""))
-            rsps.reset(s)
-            Future.exception(s)
+        getStatus(req.responseStatus) match {
+          case Some(status) =>
+            rsps.reset(status)
+            Future.exception(status)
 
-          case _ =>
-            streamResponses(rsps, req.responseparameters)
+          case None =>
+            streamResponses(rsps, req.responseParameters)
               .before(release())
               .before(process())
         }
@@ -93,7 +90,7 @@ object TestServiceImpl extends TestService {
    */
   def streamingOutputCall(req: StreamingOutputCallRequest): Stream[StreamingOutputCallResponse] = {
     val rsps = Stream[StreamingOutputCallResponse]()
-    streamResponses(rsps, req.responseparameters).before(rsps.close())
+    streamResponses(rsps, req.responseParameters).before(rsps.close())
     rsps
   }
 
@@ -106,6 +103,12 @@ object TestServiceImpl extends TestService {
       val payload = mkPayload(param.size.getOrElse(0))
       val msg = StreamingOutputCallResponse(Some(payload))
       rsps.send(msg).before(streamResponses(rsps, tail))
+  }
+
+  private[this] def getStatus(es: Option[EchoStatus]): Option[GrpcStatus] = es match {
+    case None => None
+    case Some(EchoStatus(Some(code), msg)) => Some(GrpcStatus(code, msg.getOrElse("")))
+    case Some(EchoStatus(None, msg)) => Some(GrpcStatus.Unknown(msg.getOrElse("")))
   }
 
   private[this] def mkPayload(sz: Int): Payload = {
