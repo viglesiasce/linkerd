@@ -43,14 +43,12 @@ class Server extends pb.TestService {
     val rsps = Stream[pb.StreamingOutputCallResponse]
 
     def process(): Future[Unit] = {
-      println("server receiving req")
       reqs.recv().transform {
         case Throw(GrpcStatus.Ok(_)) => rsps.close()
         case Throw(s: GrpcStatus) => Future.exception(s)
         case Throw(e) => Future.exception(GrpcStatus.Internal(e.getMessage))
 
         case Return(Stream.Releasable(req, release)) =>
-          println(s"server received req $req")
           getStatus(req.responseStatus) match {
             case Some(status) =>
               rsps.reset(status)
@@ -119,7 +117,6 @@ class Server extends pb.TestService {
     case Seq(param, tail@_*) =>
       val payload = mkPayload(param.size.getOrElse(0))
       val msg = pb.StreamingOutputCallResponse(Some(payload))
-      println(s"server sending rsp ${param.size}")
       rsps.send(msg).before(streamResponses(rsps, tail))
   }
 

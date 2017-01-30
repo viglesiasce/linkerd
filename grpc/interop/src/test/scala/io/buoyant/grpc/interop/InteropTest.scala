@@ -26,15 +26,22 @@ class InteropTest extends FunSuite {
     await(interop.pingPong(Client.DefaultReqSizes.zip(Client.DefaultRspSizes)))
   }
 
-  todo("empty_stream") { await(interop.emptyStream()) }
-  todo("timeout_on_sleeping_server") { await(interop.timeoutOnSleepingServer()) }
-  todo("cancel_after_begin") { await(interop.cancelAfterBegin()) }
+  test("empty_stream") {
+    await(interop.emptyStream())
+  }
+
+  todo("cancel_after_begin") {
+    await(interop.cancelAfterBegin())
+  }
+
   todo("cancel_after_first_response") { await(interop.cancelAfterFirstResponse()) }
   todo("status_code_and_message") { await(interop.statusCodeAndMessage()) }
 
+  todo("timeout_on_sleeping_server") { await(interop.timeoutOnSleepingServer()) }
+
   def todo(name: String)(f: => Unit): Unit =
     test(name) {
-      assertThrows[Client.UnimplementedException](f)
+      assertThrows[Exception](f)
       cancel("Not implemented")
     }
 }

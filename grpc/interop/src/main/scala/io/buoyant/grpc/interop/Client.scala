@@ -91,7 +91,7 @@ class Client(
   }
 
   def clientStreaming(reqSizes: Seq[Int]): Future[Unit] = {
-    val reqs = Stream[pb.StreamingInputCallRequest]()
+    val reqs = Stream.mk[pb.StreamingInputCallRequest]
 
     def sendReqs(szs0: Seq[Int]): Future[Unit] = szs0 match {
       case Nil => reqs.close()
@@ -151,9 +151,7 @@ class Client(
           responseParameters = Seq(pb.ResponseParameters(size = Some(rspSz))),
           payload = Some(mkPayload(reqSz))
         )
-        println(s"client sending req $reqSz,$rspSz")
         reqs.send(req).before {
-          println(s"client receiving rsp $rspSz")
           rsps.recv().flatMap { _r =>
             val Stream.Releasable(rsp, release) = _r
             rsp match {
@@ -175,9 +173,31 @@ class Client(
     sendRecv(sizes0)
   }
 
-  def emptyStream(): Future[Unit] = unimplementedTest("empty_stream")
+  def emptyStream(): Future[Unit] = {
+    val reqs = Stream.mk[pb.StreamingOutputCallRequest]
+    reqs.reset(GrpcStatus.Ok())
+    val rsps = svc.fullDuplexCall(reqs)
+    rsps.recv().transform {
+      case Throw(GrpcStatus.Ok(_)) => Future.Unit
+      case Throw(e) => Future.exception(e)
+      case Return(Stream.Releasable(rsp, release)) =>
+        Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
+    }
+  }
+
   def timeoutOnSleepingServer(): Future[Unit] = unimplementedTest("timeout_on_sleeping_server")
-  def cancelAfterBegin(): Future[Unit] = unimplementedTest("cancel_after_begin")
+
+  def cancelAfterBegin(): Future[Unit] = {
+    val reqs = Stream.mk[pb.StreamingInputCallRequest]
+    val rspF = svc.streamingInputCall(reqs)
+    rspF.raise(GrpcStatus.Canceled())
+    rspF.transform {
+      case Throw(GrpcStatus.Canceled(_)) => Future.Unit
+      case Throw(e) => Future.exception(e)
+      case Return(rsp) => Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
+    }
+  }
+
   def cancelAfterFirstResponse(): Future[Unit] = unimplementedTest("cancel_after_first_response")
   def statusCodeAndMessage(): Future[Unit] = unimplementedTest("status_code_and_message")
 }
