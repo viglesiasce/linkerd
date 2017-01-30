@@ -31,17 +31,13 @@ object Client extends App with Logging {
   def main() {
     val h2 = H2.newService(srvDst().show)
     closeOnExit(h2)
-    val client = new Client(
-      new pb.TestService.Client(h2),
-      reqSizes(), rspSizes(),
-      largeReqSize(), largeRspSize()
-    )
+    val client = new Client(new pb.TestService.Client(h2))
 
     val res = testCase() match {
       case "empty_unary" => client.emptyUnary()
-      case "large_unary" => client.largeUnary()
-      case "client_streaming" => client.clientStreaming()
-      case "server_streaming" => client.serverStreaming()
+      case "large_unary" => client.largeUnary(largeReqSize(), largeRspSize())
+      case "client_streaming" => client.clientStreaming(reqSizes())
+      case "server_streaming" => client.serverStreaming(rspSizes())
       case "ping_pong" => client.pingPong()
       case "empty_stream" => client.emptyStream()
       case "timeout_on_sleeping_server" => client.timeoutOnSleepingServer()
@@ -67,11 +63,7 @@ object Client extends App with Logging {
 }
 
 class Client(
-  svc: pb.TestService,
-  reqSizes: Seq[Int],
-  rspSizes: Seq[Int],
-  largeReqSize: Int,
-  largeRspSize: Int
+  svc: pb.TestService
 ) {
   import Client.{mkPayload, unimplementedTest}
 
@@ -81,22 +73,22 @@ class Client(
       case rsp => Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
     }
 
-  def largeUnary(): Future[Unit] = {
+  def largeUnary(reqSize: Int, rspSize: Int): Future[Unit] = {
     val req = pb.SimpleRequest(
       responseType = Some(pb.PayloadType.COMPRESSABLE), // cargocult
-      responseSize = Some(largeRspSize),
-      payload = Some(mkPayload(largeReqSize))
+      responseSize = Some(rspSize),
+      payload = Some(mkPayload(reqSize))
     )
     svc.unaryCall(req).flatMap {
       case pb.SimpleResponse(Some(pb.Payload(_, Some(buf))), _, _) =>
-        if (buf.length == largeRspSize) Future.Unit
-        else Future.exception(new IllegalArgumentException(s"received ${buf.length}B, expected ${largeRspSize}B"))
+        if (buf.length == rspSize) Future.Unit
+        else Future.exception(new IllegalArgumentException(s"received ${buf.length}B, expected ${rspSize}B"))
 
       case rsp => Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
     }
   }
 
-  def clientStreaming(): Future[Unit] = {
+  def clientStreaming(reqSizes: Seq[Int]): Future[Unit] = {
     val reqs = Stream[pb.StreamingInputCallRequest]()
 
     def sendReqs(szs0: Seq[Int]): Future[Unit] = szs0 match {
@@ -116,7 +108,35 @@ class Client(
     }
   }
 
-  def serverStreaming(): Future[Unit] = unimplementedTest("server_streaming")
+  def serverStreaming(rspSizes0: Seq[Int]): Future[Unit] = {
+    val req = pb.StreamingOutputCallRequest(
+      responseParameters = rspSizes0.map { sz => pb.ResponseParameters(size = Some(sz)) }
+    )
+    val rsps = svc.streamingOutputCall(req)
+
+    def read(rspSizes: Seq[Int]): Future[Unit] = rspSizes match {
+      case Nil => Future.Unit
+      case Seq(expected, rest@_*) =>
+        rsps.recv().transform {
+          case Throw(GrpcStatus.Ok(_)) => Future.Unit
+          case Throw(e) => Future.exception(e)
+          case Return(Stream.Releasable(rsp, release)) => rsp match {
+            case pb.StreamingOutputCallResponse(Some(pb.Payload(_, Some(buf)))) =>
+              val sz = buf.length
+              release().before {
+                if (sz != expected) {
+                  Future.exception(new IllegalArgumentException(s"recieved ${sz}B, expected ${expected}B"))
+                } else read(rest)
+              }
+
+            case rsp =>
+              release().before(Future.exception(new IllegalArgumentException(s"invalid response: $rsp")))
+          }
+        }
+    }
+    read(rspSizes0)
+  }
+
   def pingPong(): Future[Unit] = unimplementedTest("ping_pong")
   def emptyStream(): Future[Unit] = unimplementedTest("empty_stream")
   def timeoutOnSleepingServer(): Future[Unit] = unimplementedTest("timeout_on_sleeping_server")
