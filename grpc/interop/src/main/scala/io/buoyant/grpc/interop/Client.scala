@@ -38,7 +38,7 @@ object Client extends App with Logging {
       case "large_unary" => client.largeUnary(largeReqSize(), largeRspSize())
       case "client_streaming" => client.clientStreaming(reqSizes())
       case "server_streaming" => client.serverStreaming(rspSizes())
-      case "ping_pong" => client.pingPong()
+      case "ping_pong" => client.pingPong(reqSizes().zip(rspSizes()))
       case "empty_stream" => client.emptyStream()
       case "timeout_on_sleeping_server" => client.timeoutOnSleepingServer()
       case "cancel_after_begin" => client.cancelAfterBegin()
@@ -142,21 +142,36 @@ class Client(
   def pingPong(sizes0: Seq[(Int, Int)]): Future[Unit] = {
     val reqs = Stream.mk[pb.StreamingOutputCallRequest]
     val rsps = svc.fullDuplexCall(reqs)
+
     def sendRecv(sizes: Seq[(Int, Int)]): Future[Unit] = sizes match {
       case Nil => Future.Unit
+
       case Seq((reqSz, rspSz), rest@_*) =>
         val req = pb.StreamingOutputCallRequest(
           responseParameters = Seq(pb.ResponseParameters(size = Some(rspSz))),
           payload = Some(mkPayload(reqSz))
         )
+        println(s"client sending req $reqSz,$rspSz")
         reqs.send(req).before {
+          println(s"client receiving rsp $rspSz")
           rsps.recv().flatMap { _r =>
             val Stream.Releasable(rsp, release) = _r
-            // todo check rsp
-            release().before(sendRecv(rest))
-          }
-        }.before(reqs.close())
+            rsp match {
+              case pb.StreamingOutputCallResponse(Some(pb.Payload(_, Some(buf)))) =>
+                val sz = buf.length
+                release().before {
+                  if (sz != rspSz) {
+                    Future.exception(new IllegalArgumentException(s"recieved ${sz}B, expected ${rspSz}B"))
+                  } else sendRecv(rest)
+                }
+
+              case rsp =>
+                release().before(Future.exception(new IllegalArgumentException(s"invalid response: $rsp")))
+            }
+          }.before(reqs.close())
+        }
     }
+
     sendRecv(sizes0)
   }
 

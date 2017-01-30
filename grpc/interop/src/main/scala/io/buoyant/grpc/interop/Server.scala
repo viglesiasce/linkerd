@@ -42,22 +42,26 @@ class Server extends pb.TestService {
   ): Stream[pb.StreamingOutputCallResponse] = {
     val rsps = Stream[pb.StreamingOutputCallResponse]
 
-    def process(): Future[Unit] = reqs.recv().transform {
-      case Throw(GrpcStatus.Ok(_)) => rsps.close()
-      case Throw(s: GrpcStatus) => Future.exception(s)
-      case Throw(e) => Future.exception(GrpcStatus.Internal(e.getMessage))
+    def process(): Future[Unit] = {
+      println("server receiving req")
+      reqs.recv().transform {
+        case Throw(GrpcStatus.Ok(_)) => rsps.close()
+        case Throw(s: GrpcStatus) => Future.exception(s)
+        case Throw(e) => Future.exception(GrpcStatus.Internal(e.getMessage))
 
-      case Return(Stream.Releasable(req, release)) =>
-        getStatus(req.responseStatus) match {
-          case Some(status) =>
-            rsps.reset(status)
-            Future.exception(status)
+        case Return(Stream.Releasable(req, release)) =>
+          println(s"server received req $req")
+          getStatus(req.responseStatus) match {
+            case Some(status) =>
+              rsps.reset(status)
+              release().before(Future.exception(status))
 
-          case None =>
-            streamResponses(rsps, req.responseParameters)
-              .before(release())
-              .before(process())
-        }
+            case None =>
+              release()
+                .before(streamResponses(rsps, req.responseParameters))
+                .before(process())
+          }
+      }
     }
 
     process()
@@ -115,6 +119,7 @@ class Server extends pb.TestService {
     case Seq(param, tail@_*) =>
       val payload = mkPayload(param.size.getOrElse(0))
       val msg = pb.StreamingOutputCallResponse(Some(payload))
+      println(s"server sending rsp ${param.size}")
       rsps.send(msg).before(streamResponses(rsps, tail))
   }
 

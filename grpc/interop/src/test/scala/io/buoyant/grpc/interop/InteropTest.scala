@@ -22,7 +22,10 @@ class InteropTest extends FunSuite {
     await(interop.serverStreaming(Client.DefaultRspSizes))
   }
 
-  todo("ping_pong") { await(interop.pingPong()) }
+  test("ping_pong") {
+    await(interop.pingPong(Client.DefaultReqSizes.zip(Client.DefaultRspSizes)))
+  }
+
   todo("empty_stream") { await(interop.emptyStream()) }
   todo("timeout_on_sleeping_server") { await(interop.timeoutOnSleepingServer()) }
   todo("cancel_after_begin") { await(interop.cancelAfterBegin()) }
