@@ -58,8 +58,10 @@ object Client extends App with Logging {
     pb.Payload(body = Some(body))
   }
 
-  private def unimplementedTest(name: String) = Future.exception(new IllegalArgumentException(s"test not implemented: '${name}'"))
+  private def unimplementedTest(name: String) =
+    Future.exception(new UnimplementedException(name))
 
+  class UnimplementedException(name: String) extends Exception(s"test not implemented: '${name}'")
 }
 
 class Client(
