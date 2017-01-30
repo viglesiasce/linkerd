@@ -139,7 +139,27 @@ class Client(
     read(rspSizes0)
   }
 
-  def pingPong(): Future[Unit] = unimplementedTest("ping_pong")
+  def pingPong(sizes0: Seq[(Int, Int)]): Future[Unit] = {
+    val reqs = Stream.mk[pb.StreamingOutputCallRequest]
+    val rsps = svc.fullDuplexCall(reqs)
+    def sendRecv(sizes: Seq[(Int, Int)]): Future[Unit] = sizes match {
+      case Nil => Future.Unit
+      case Seq((reqSz, rspSz), rest@_*) =>
+        val req = pb.StreamingOutputCallRequest(
+          responseParameters = Seq(pb.ResponseParameters(size = Some(rspSz))),
+          payload = Some(mkPayload(reqSz))
+        )
+        reqs.send(req).before {
+          rsps.recv().flatMap { _r =>
+            val Stream.Releasable(rsp, release) = _r
+            // todo check rsp
+            release().before(sendRecv(rest))
+          }
+        }.before(reqs.close())
+    }
+    sendRecv(sizes0)
+  }
+
   def emptyStream(): Future[Unit] = unimplementedTest("empty_stream")
   def timeoutOnSleepingServer(): Future[Unit] = unimplementedTest("timeout_on_sleeping_server")
   def cancelAfterBegin(): Future[Unit] = unimplementedTest("cancel_after_begin")
