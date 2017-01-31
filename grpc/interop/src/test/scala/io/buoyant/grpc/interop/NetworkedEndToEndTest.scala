@@ -7,11 +7,8 @@ import io.buoyant.test.FunSuite
 import java.net.InetSocketAddress
 
 class NetworkedInteropTest extends FunSuite with InteropTestBase {
-
   val bugUrl = "https://github.com/linkerd/linkerd/issues/1013"
   override def todo = super.todo ++ Map(
-    "empty_stream" -> "there's seems to be a race in client stream teardown",
-    "status_code_and_message" -> "there's seems to be a race in client stream teardown",
     "large_unary" -> bugUrl,
     "client_streaming" -> bugUrl,
     "ping_pong" -> bugUrl
@@ -25,8 +22,11 @@ class NetworkedInteropTest extends FunSuite with InteropTestBase {
       H2.newService(dst)
     }
     val client = new Client(new pb.TestService.Client(c))
+    // setLogLevel(com.twitter.logging.Level.ALL)
     run(client).transform { ret =>
-      c.close().transform(_ => s.close())
+      // setLogLevel(com.twitter.logging.Level.OFF)
+      c.close()
+        .transform(_ => s.close())
         .transform(_ => Future.const(ret))
     }
   }

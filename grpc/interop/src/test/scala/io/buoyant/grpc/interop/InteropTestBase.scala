@@ -28,16 +28,19 @@ trait InteropTestBase { _: FunSuite =>
     "cancel_after_first_response" -> "needs api change?",
     "timeout_on_sleeping_server" -> "can't deadline streams yet..."
   )
+  def only: Set[String] = Set.empty
 
   for (Case(name, run) <- cases)
-    test(name) {
-      todo.get(name) match {
-        case None =>
-          await(withClient(run))
-        case Some(msg) =>
+    if (only.nonEmpty && !only(name)) ignore(name) {}
+    else todo.get(name) match {
+      case Some(msg) =>
+        test(name) {
           assertThrows[Throwable](await(withClient(run)))
           cancel(s"TODO: $msg")
-      }
+        }
+
+      case None =>
+        test(name) { await(withClient(run)) }
     }
 
 }

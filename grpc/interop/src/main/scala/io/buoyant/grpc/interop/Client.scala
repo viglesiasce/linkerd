@@ -176,34 +176,13 @@ class Client(
   def emptyStream(): Future[Unit] = {
     scala.sys.SystemProperties.noTraceSupression.enable()
 
-    println("   >")
-    println("   > empty_stream")
-    println("   >")
     val reqs = Stream.mk[pb.StreamingOutputCallRequest]
     val rsps = svc.fullDuplexCall(reqs)
-    println("   >")
-    println("   > client closing stream")
-    println("   >")
     reqs.close().before {
-      println("  >>")
-      println("  >> client receiving")
-      println("  >>")
       rsps.recv().transform {
-        case Throw(GrpcStatus.Ok(msg)) =>
-          println(" >>>")
-          println(s" >>> client response ok $msg")
-          println(" >>>")
-          Future.Unit
-        case Throw(e) =>
-          println(" >>>")
-          println(s" >>> client response $e")
-          e.printStackTrace
-          println(" >>>")
-          Future.exception(e)
+        case Throw(GrpcStatus.Ok(msg)) => Future.Unit
+        case Throw(e) => Future.exception(e)
         case Return(Stream.Releasable(rsp, release)) =>
-          println(" >>>")
-          println(s" >>> client response $rsp")
-          println(" >>>")
           Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
       }
     }

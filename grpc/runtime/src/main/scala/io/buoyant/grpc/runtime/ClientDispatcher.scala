@@ -36,10 +36,10 @@ object ClientDispatcher {
           Future.exception(e)
       }
 
-    val loopF = loop()
+    loop()
     frames.onEnd.respond {
       case Return(_) =>
-        loopF.raise(Failure(GrpcStatus.Ok(), Failure.Interrupted))
+        msgs.reset(GrpcStatus.Ok())
 
       case Throw(e) =>
         val status = e match {
@@ -48,7 +48,6 @@ object ClientDispatcher {
           case e => GrpcStatus.Unknown(e.getMessage)
         }
         msgs.reset(status)
-        loopF.raise(Failure(status, Failure.Interrupted))
     }
 
     h2.Request("http", h2.Method.Post, "", path, frames)
