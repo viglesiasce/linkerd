@@ -17,7 +17,7 @@ class NetworkedInteropTest extends FunSuite with InteropTestBase {
   )
 
   override def withClient(run: Client => Future[Unit]): Future[Unit] = {
-    val s = H2.serve(":*", (new Server).dispatcher)
+    val s = H2.serve("127.1:*", (new Server).dispatcher)
     val c = {
       val addr = s.boundAddress.asInstanceOf[InetSocketAddress]
       val dst = s"/$$/inet/127.1/${addr.getPort}"
