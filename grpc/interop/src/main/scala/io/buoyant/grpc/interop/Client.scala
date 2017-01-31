@@ -223,5 +223,25 @@ class Client(
   }
 
   def cancelAfterFirstResponse(): Future[Unit] = unimplementedTest("cancel_after_first_response")
-  def statusCodeAndMessage(): Future[Unit] = unimplementedTest("status_code_and_message")
+
+  def statusCodeAndMessage(): Future[Unit] = {
+    val req = pb.SimpleRequest(
+      responseStatus = Some(pb.EchoStatus(
+        code = Some(2),
+        message = Some("destroy fascism")
+      ))
+    )
+    svc.unaryCall(req).transform {
+      case Throw(GrpcStatus.Unknown("destroy fascism")) =>
+        val reqs = Stream.value(pb.StreamingOutputCallRequest(responseStatus = Some(rspStatus)))
+        val rsps = svc.fullDuplexCall(reqs)
+        rsps.recv().transform {
+          case Throw(GrpcStatus.Unknown("destroy fascism")) => Future.Unit
+          case result =>
+            Future.exception(new IllegalArgumentException(s"unexpected response: $result"))
+        }
+      case result =>
+        Future.exception(new IllegalArgumentException(s"unexpected response: $result"))
+    }
+  }
 }
