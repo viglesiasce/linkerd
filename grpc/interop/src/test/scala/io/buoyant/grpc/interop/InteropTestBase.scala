@@ -26,7 +26,6 @@ trait InteropTestBase { _: FunSuite =>
   def todo: Map[String, String] = Map(
     "cancel_after_begin" -> "needs api change?",
     "cancel_after_first_response" -> "needs api change?",
-    "status_code_and_message" -> "idk",
     "timeout_on_sleeping_server" -> "can't deadline streams yet..."
   )
 

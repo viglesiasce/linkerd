@@ -10,7 +10,8 @@ class NetworkedInteropTest extends FunSuite with InteropTestBase {
 
   val bugUrl = "https://github.com/linkerd/linkerd/issues/1013"
   override def todo = super.todo ++ Map(
-    "empty_stream" -> "there's seems to be a race in stream teardown",
+    "empty_stream" -> "there's seems to be a race in client stream teardown",
+    "status_code_and_message" -> "there's seems to be a race in client stream teardown",
     "large_unary" -> bugUrl,
     "client_streaming" -> bugUrl,
     "ping_pong" -> bugUrl
@@ -25,7 +26,8 @@ class NetworkedInteropTest extends FunSuite with InteropTestBase {
     }
     val client = new Client(new pb.TestService.Client(c))
     run(client).transform { ret =>
-      c.close().before(s.close()).before(Future.const(ret))
+      c.close().transform(_ => s.close())
+        .transform(_ => Future.const(ret))
     }
   }
 }

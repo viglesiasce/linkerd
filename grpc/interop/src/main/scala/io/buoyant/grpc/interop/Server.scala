@@ -40,7 +40,7 @@ class Server extends pb.TestService {
   def fullDuplexCall(
     reqs: Stream[pb.StreamingOutputCallRequest]
   ): Stream[pb.StreamingOutputCallResponse] = {
-    val rsps = Stream[pb.StreamingOutputCallResponse]
+    val rsps = Stream.mk[pb.StreamingOutputCallResponse]
 
     def process(): Future[Unit] = {
       reqs.recv().transform {
@@ -73,7 +73,7 @@ class Server extends pb.TestService {
   def halfDuplexCall(
     reqs: Stream[pb.StreamingOutputCallRequest]
   ): Stream[pb.StreamingOutputCallResponse] =
-    ??? // Stream.exception(GrpcStatus.Unimplemented("no test cases use halfDuplexCall"))
+    Stream.exception(GrpcStatus.Unimplemented("no test cases use halfDuplexCall"))
 
   /**
    * Returns the aggregated size of input payloads.
@@ -108,7 +108,7 @@ class Server extends pb.TestService {
   def streamingOutputCall(
     req: pb.StreamingOutputCallRequest
   ): Stream[pb.StreamingOutputCallResponse] = {
-    val rsps = Stream[pb.StreamingOutputCallResponse]()
+    val rsps = Stream.mk[pb.StreamingOutputCallResponse]
     streamResponses(rsps, req.responseParameters).before(rsps.close())
     rsps
   }
