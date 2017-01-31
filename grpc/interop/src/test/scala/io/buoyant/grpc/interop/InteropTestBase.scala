@@ -10,7 +10,7 @@ trait InteropTestBase { _: FunSuite =>
 
   case class Case(name: String, run: Client => Future[Unit])
 
-  val cases: Set[Case] = Set(
+  def cases: Seq[Case] = Seq(
     Case("empty_unary", _.emptyUnary()),
     Case("large_unary", _.largeUnary(Client.DefaultLargeReqSize, Client.DefaultLargeRspSize)),
     Case("client_streaming", _.clientStreaming(Client.DefaultReqSizes)),
@@ -23,19 +23,23 @@ trait InteropTestBase { _: FunSuite =>
     Case("timeout_on_sleeping_server", _.timeoutOnSleepingServer())
   )
 
-  def todo: Set[String] = Set(
-    "cancel_after_begin",
-    "cancel_after_first_response",
-    "status_code_and_message",
-    "timeout_on_sleeping_server"
+  def todo: Map[String, String] = Map(
+    "cancel_after_begin" -> "needs api change?",
+    "cancel_after_first_response" -> "needs api change?",
+    "status_code_and_message" -> "idk",
+    "timeout_on_sleeping_server" -> "can't deadline streams yet..."
   )
 
-  cases.foreach {
-    case Case(name, run) =>
-      test(name) {
-        if (todo.contains(name)) assertThrows[Exception](await(withClient(run)))
-        else await(withClient(run))
+  for (Case(name, run) <- cases)
+    test(name) {
+      todo.get(name) match {
+        case None =>
+          await(withClient(run))
+        case Some(msg) =>
+          assertThrows[Throwable](await(withClient(run)))
+          cancel(s"TODO: $msg")
       }
-  }
+    }
+
 }
 
