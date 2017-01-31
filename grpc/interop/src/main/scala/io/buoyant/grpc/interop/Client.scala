@@ -152,8 +152,8 @@ class Client(
           payload = Some(mkPayload(reqSz))
         )
         reqs.send(req).before {
-          rsps.recv().flatMap { _r =>
-            val Stream.Releasable(rsp, release) = _r
+          rsps.recv().flatMap { r =>
+            val Stream.Releasable(rsp, release) = r
             rsp match {
               case pb.StreamingOutputCallResponse(Some(pb.Payload(_, Some(buf)))) =>
                 val sz = buf.length
@@ -174,14 +174,38 @@ class Client(
   }
 
   def emptyStream(): Future[Unit] = {
+    scala.sys.SystemProperties.noTraceSupression.enable()
+
+    println("   >")
+    println("   > empty_stream")
+    println("   >")
     val reqs = Stream.mk[pb.StreamingOutputCallRequest]
-    reqs.reset(GrpcStatus.Ok())
     val rsps = svc.fullDuplexCall(reqs)
-    rsps.recv().transform {
-      case Throw(GrpcStatus.Ok(_)) => Future.Unit
-      case Throw(e) => Future.exception(e)
-      case Return(Stream.Releasable(rsp, release)) =>
-        Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
+    println("   >")
+    println("   > client closing stream")
+    println("   >")
+    reqs.close().before {
+      println("  >>")
+      println("  >> client receiving")
+      println("  >>")
+      rsps.recv().transform {
+        case Throw(GrpcStatus.Ok(msg)) =>
+          println(" >>>")
+          println(s" >>> client response ok $msg")
+          println(" >>>")
+          Future.Unit
+        case Throw(e) =>
+          println(" >>>")
+          println(s" >>> client response $e")
+          e.printStackTrace
+          println(" >>>")
+          Future.exception(e)
+        case Return(Stream.Releasable(rsp, release)) =>
+          println(" >>>")
+          println(s" >>> client response $rsp")
+          println(" >>>")
+          Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
+      }
     }
   }
 

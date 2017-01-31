@@ -44,7 +44,11 @@ class Server extends pb.TestService {
 
     def process(): Future[Unit] = {
       reqs.recv().transform {
-        case Throw(GrpcStatus.Ok(_)) => rsps.close()
+        case Throw(GrpcStatus.Ok(_)) =>
+          println(" <")
+          println(" <  server closing stream")
+          println(" <")
+          rsps.close()
         case Throw(s: GrpcStatus) => Future.exception(s)
         case Throw(e) => Future.exception(GrpcStatus.Internal(e.getMessage))
 
