@@ -195,6 +195,7 @@ class Client(
     rspF.transform {
       case Throw(GrpcStatus.Canceled(_)) => Future.Unit
       case Throw(Failure(Some(GrpcStatus.Canceled(_)))) => Future.Unit
+      case Throw(f@Failure(Some(e))) => Future.exception(e)
       case Throw(e) => Future.exception(e)
       case Return(rsp) =>
         Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
@@ -208,17 +209,17 @@ class Client(
       responseParameters = Seq(pb.ResponseParameters(size = Some(2048))),
       payload = Some(mkPayload(2048))
     ))
-    rsps.recv().flatMap {
-      case Stream.Releasable(_, release) =>
-        release().before {
-          reqs.reset(GrpcStatus.Canceled())
-          rsps.recv().transform {
-            case Throw(GrpcStatus.Canceled(_)) => Future.Unit
-            case Throw(e) => Future.exception(e)
-            case Return(rsp) =>
-              Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
-          }
+    rsps.recv().flatMap { r =>
+      val Stream.Releasable(_, release) = r
+      release().before {
+        reqs.reset(GrpcStatus.Canceled())
+        rsps.recv().transform {
+          case Throw(GrpcStatus.Canceled(_)) => Future.Unit
+          case Throw(e) => Future.exception(e)
+          case Return(rsp) =>
+            Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
         }
+      }
     }
   }
 

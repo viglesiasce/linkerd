@@ -7,7 +7,8 @@ import io.buoyant.test.FunSuite
 import java.net.InetSocketAddress
 
 class NetworkedInteropTest extends FunSuite with InteropTestBase {
-  val bugUrl = "https://github.com/linkerd/linkerd/issues/1013"
+
+  def bugUrl = "https://github.com/linkerd/linkerd/issues/1013"
   override def todo = super.todo ++ Map(
     "large_unary" -> bugUrl,
     "client_streaming" -> bugUrl,

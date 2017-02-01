@@ -128,11 +128,13 @@ object Stream {
           case e@Failure(cause) if e.isFlagged(Failure.Interrupted) =>
             val status = cause match {
               case Some(s: GrpcStatus) => s
-              case _ => GrpcStatus.Canceled()
+              case Some(e) => GrpcStatus.Canceled(e.getMessage)
+              case None => GrpcStatus.Canceled()
             }
             reset(status)
             f.raise(e)
           case e =>
+            reset(GrpcStatus.Canceled(e.getMessage))
             f.raise(e)
         }
         p
