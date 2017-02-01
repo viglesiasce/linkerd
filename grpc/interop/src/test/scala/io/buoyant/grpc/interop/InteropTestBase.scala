@@ -8,8 +8,13 @@ trait InteropTestBase { _: FunSuite =>
 
   def withClient(f: Client => Future[Unit]): Future[Unit]
 
-  case class Case(name: String, run: Client => Future[Unit])
+  def todo: Map[String, String] = Map(
+    "timeout_on_sleeping_server" -> "can't deadline streams yet..."
+  )
 
+  def only: Set[String] = Set.empty
+
+  case class Case(name: String, run: Client => Future[Unit])
   def cases: Seq[Case] = Seq(
     Case("empty_unary", _.emptyUnary()),
     Case("large_unary", _.largeUnary(Client.DefaultLargeReqSize, Client.DefaultLargeRspSize)),
@@ -22,13 +27,6 @@ trait InteropTestBase { _: FunSuite =>
     Case("status_code_and_message", _.statusCodeAndMessage()),
     Case("timeout_on_sleeping_server", _.timeoutOnSleepingServer())
   )
-
-  def todo: Map[String, String] = Map(
-    "cancel_after_begin" -> "needs api change?",
-    "cancel_after_first_response" -> "needs api change?",
-    "timeout_on_sleeping_server" -> "can't deadline streams yet..."
-  )
-  def only: Set[String] = Set.empty
 
   for (Case(name, run) <- cases)
     if (only.nonEmpty && !only(name)) ignore(name) {}

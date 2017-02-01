@@ -1,7 +1,7 @@
 package io.buoyant.grpc.interop
 
 import com.twitter.app.App
-import com.twitter.finagle.Path
+import com.twitter.finagle.{Failure, Path}
 import com.twitter.finagle.buoyant.H2
 import com.twitter.io.Buf
 import com.twitter.logging.Logging
@@ -174,8 +174,6 @@ class Client(
   }
 
   def emptyStream(): Future[Unit] = {
-    scala.sys.SystemProperties.noTraceSupression.enable()
-
     val reqs = Stream.mk[pb.StreamingOutputCallRequest]
     val rsps = svc.fullDuplexCall(reqs)
     reqs.close().before {
@@ -193,31 +191,50 @@ class Client(
   def cancelAfterBegin(): Future[Unit] = {
     val reqs = Stream.mk[pb.StreamingInputCallRequest]
     val rspF = svc.streamingInputCall(reqs)
-    rspF.raise(GrpcStatus.Canceled())
+    rspF.raise(Failure(GrpcStatus.Canceled(), Failure.Interrupted))
     rspF.transform {
       case Throw(GrpcStatus.Canceled(_)) => Future.Unit
+      case Throw(Failure(Some(GrpcStatus.Canceled(_)))) => Future.Unit
       case Throw(e) => Future.exception(e)
-      case Return(rsp) => Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
+      case Return(rsp) =>
+        Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
     }
   }
 
-  def cancelAfterFirstResponse(): Future[Unit] = unimplementedTest("cancel_after_first_response")
+  def cancelAfterFirstResponse(): Future[Unit] = {
+    val reqs = Stream.mk[pb.StreamingOutputCallRequest]
+    val rsps = svc.fullDuplexCall(reqs)
+    reqs.send(pb.StreamingOutputCallRequest(
+      responseParameters = Seq(pb.ResponseParameters(size = Some(2048))),
+      payload = Some(mkPayload(2048))
+    ))
+    rsps.recv().flatMap {
+      case Stream.Releasable(_, release) =>
+        release().before {
+          reqs.reset(GrpcStatus.Canceled())
+          rsps.recv().transform {
+            case Throw(GrpcStatus.Canceled(_)) => Future.Unit
+            case Throw(e) => Future.exception(e)
+            case Return(rsp) =>
+              Future.exception(new IllegalArgumentException(s"unexpected response: $rsp"))
+          }
+        }
+    }
+  }
 
   def statusCodeAndMessage(): Future[Unit] = {
-    val rspStatus = pb.EchoStatus(
-      code = Some(2),
-      message = Some("destroy fascism")
-    )
-    svc.unaryCall(pb.SimpleRequest(responseStatus = Some(rspStatus))).transform {
-      case Throw(GrpcStatus.Unknown("destroy fascism")) =>
-        val rsps = svc.fullDuplexCall(Stream.value(pb.StreamingOutputCallRequest(responseStatus = Some(rspStatus))))
-        rsps.recv().transform {
-          case Throw(GrpcStatus.Unknown("destroy fascism")) => Future.Unit
-          case result =>
-            Future.exception(new IllegalArgumentException(s"unexpected response: $result"))
-        }
-      case result =>
-        Future.exception(new IllegalArgumentException(s"unexpected response: $result"))
+    val checkStatus: Try[_] => Future[Unit] = {
+      case Throw(GrpcStatus.Unknown("destroy fascism")) => Future.Unit
+      case result => Future.exception(new IllegalArgumentException(s"unexpected response: $result"))
+    }
+
+    // First a unary call, then a streaming call
+    val rspStatus = pb.EchoStatus(Some(2), Some("destroy fascism"))
+    val unaryReq = pb.SimpleRequest(responseStatus = Some(rspStatus))
+    val streamReq = pb.StreamingOutputCallRequest(responseStatus = Some(rspStatus))
+    svc.unaryCall(unaryReq).transform(checkStatus).before {
+      val rsps = svc.fullDuplexCall(Stream.value(streamReq))
+      rsps.recv().transform(checkStatus)
     }
   }
 }

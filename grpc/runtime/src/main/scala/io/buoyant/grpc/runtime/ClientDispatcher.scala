@@ -3,7 +3,7 @@ package io.buoyant.grpc.runtime
 import com.twitter.finagle.{Failure, Service => FinagleService}
 import com.twitter.finagle.buoyant.h2
 import com.twitter.io.Buf
-import com.twitter.util.{Future, Return, Throw}
+import com.twitter.util.{Future, Promise, Return, Throw}
 
 object ClientDispatcher {
 
@@ -53,8 +53,20 @@ object ClientDispatcher {
     h2.Request("http", h2.Method.Post, "", path, frames)
   }
 
-  def acceptUnary[T](rsp: h2.Response, codec: Codec[T]): Future[T] =
-    Codec.bufferGrpcFrame(rsp.stream).map(codec.decodeBuf)
+  def acceptUnary[T](rsp: h2.Response, codec: Codec[T]): Future[T] = {
+    val p = new Promise[T]
+    val f = Codec.bufferGrpcFrame(rsp.stream).map(codec.decodeBuf)
+    f.proxyTo(p)
+    p.setInterruptHandler {
+      case e@Failure(cause) if e.isFlagged(Failure.Interrupted) =>
+        val rst = cause match {
+          case Some(s: GrpcStatus) => s.toReset
+          case _ => h2.Reset.Cancel
+        }
+        f.raise(rst)
+    }
+    p
+  }
 
   def acceptStreaming[T](rspF: Future[h2.Response], codec: Codec[T]): Stream[T] =
     Stream.deferred(rspF.map(codec.decodeResponse))

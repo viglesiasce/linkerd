@@ -2,9 +2,10 @@ package io.buoyant.grpc.interop
 
 import com.twitter.io.Buf
 import com.twitter.app.App
-import com.twitter.finagle.buoyant.H2
+import com.twitter.finagle.Failure
+import com.twitter.finagle.buoyant.{H2, h2}
 import com.twitter.server.TwitterServer
-import com.twitter.util.{Await, Future, Return, Throw, Try}
+import com.twitter.util.{Await, Future, Promise, Return, Throw, Try}
 import grpc.{testing => pb}
 import io.buoyant.grpc.runtime.{GrpcStatus, Stream, ServerDispatcher}
 import java.net.InetSocketAddress
@@ -45,8 +46,14 @@ class Server extends pb.TestService {
     def process(): Future[Unit] = {
       reqs.recv().transform {
         case Throw(GrpcStatus.Ok(_)) => rsps.close()
-        case Throw(s: GrpcStatus) => Future.exception(s)
-        case Throw(e) => Future.exception(GrpcStatus.Internal(e.getMessage))
+        case Throw(e) =>
+          val s = e match {
+            case s: GrpcStatus => s
+            case e => GrpcStatus.Internal(e.getMessage)
+          }
+          rsps.reset(s)
+          Future.exception(s)
+
         case Return(Stream.Releasable(req, release)) =>
           getStatus(req.responseStatus) match {
             case Some(status) =>
@@ -75,26 +82,36 @@ class Server extends pb.TestService {
    */
   def streamingInputCall(
     reqs: Stream[pb.StreamingInputCallRequest]
-  ): Future[pb.StreamingInputCallResponse] =
-    accumSize(reqs, 0).map { sz => pb.StreamingInputCallResponse(Some(sz)) }
+  ): Future[pb.StreamingInputCallResponse] = {
+    val f = accumSize(reqs, 0).map { sz => pb.StreamingInputCallResponse(Some(sz)) }
+    val p = new Promise[pb.StreamingInputCallResponse]
+    f.proxyTo(p)
+    p.setInterruptHandler {
+      case e@Failure(cause) if e.isFlagged(Failure.Interrupted) =>
+        val status = cause match {
+          case Some(s: GrpcStatus) => s
+          case _ => GrpcStatus.Canceled()
+        }
+        reqs.reset(status)
+        f.raise(e)
+      case e =>
+        f.raise(e)
+    }
+    p
+  }
 
   private[this] def accumSize(
     reqs: Stream[pb.StreamingInputCallRequest],
     processed: Int
-  ): Future[Int] = reqs.recv().transform {
-    case Throw(GrpcStatus.Ok(_)) =>
-      Future.value(processed)
-
-    case Throw(e) =>
-      val s = e match {
-        case s: GrpcStatus => s
-        case e => GrpcStatus.Internal(e.getMessage)
-      }
-      Future.exception(e)
-
-    case Return(Stream.Releasable(req, release)) =>
-      val sz = req.payload.flatMap(_.body).map(_.length).getOrElse(0)
-      release().before(accumSize(reqs, processed + sz))
+  ): Future[Int] = {
+    reqs.recv().transform {
+      case Throw(GrpcStatus.Ok(_)) => Future.value(processed)
+      case Throw(s: GrpcStatus) => Future.exception(s)
+      case Throw(e) => Future.exception(GrpcStatus.Internal(e.getMessage))
+      case Return(Stream.Releasable(req, release)) =>
+        val sz = req.payload.flatMap(_.body).map(_.length).getOrElse(0)
+        release().before(accumSize(reqs, processed + sz))
+    }
   }
 
   /**
