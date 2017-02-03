@@ -10,9 +10,7 @@ class NetworkedInteropTest extends FunSuite with InteropTestBase {
 
   def bugUrl = "https://github.com/linkerd/linkerd/issues/1013"
   override def todo = super.todo ++ Map(
-    "large_unary" -> bugUrl,
-    "client_streaming" -> bugUrl,
-    "ping_pong" -> bugUrl
+    "large_unary" -> bugUrl
   )
 
   override def withClient(run: Client => Future[Unit]): Future[Unit] = {
@@ -23,9 +21,9 @@ class NetworkedInteropTest extends FunSuite with InteropTestBase {
       H2.newService(dst)
     }
     val client = new Client(new pb.TestService.Client(c))
-    setLogLevel(com.twitter.logging.Level.ALL)
+    // setLogLevel(com.twitter.logging.Level.ALL)
     run(client).transform { ret =>
-      setLogLevel(com.twitter.logging.Level.OFF)
+      // setLogLevel(com.twitter.logging.Level.OFF)
       c.close()
         .transform(_ => s.close())
         .transform(_ => Future.const(ret))
