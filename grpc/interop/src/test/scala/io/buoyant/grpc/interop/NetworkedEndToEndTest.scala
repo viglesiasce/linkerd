@@ -32,9 +32,7 @@ class NetworkedInteropTest extends FunSuite with InteropTestBase {
     // setLogLevel(com.twitter.logging.Level.ALL)
     run(client).transform { ret =>
       // setLogLevel(com.twitter.logging.Level.OFF)
-      c.close()
-        .transform(_ => s.close())
-        .transform(_ => Future.const(ret))
+      c.close().join(s.close()).unit.before(Future.const(ret))
     }
   }
 }
